@@ -1,0 +1,8 @@
+ToDO .txt
+1. Code of weekly expiries
+2. Upload in github 
+    1. move the file to ZIP folder 
+    2. upload the zips to github/ google drive 
+
+3. Share the files with the world
+4. 

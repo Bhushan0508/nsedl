@@ -39,6 +39,9 @@ import calendar
 #import nsetools
 #import requests
 #import json
+#import github
+import zipfile
+from pytz import timezone
 
 def generate_access_token(auth_code, appId, secret_key):
 	appSession = accessToken.SessionModel(client_id=appId, secret_key=secret_key,grant_type="authorization_code")
@@ -63,7 +66,8 @@ def generate_auth_code():
 	#driver.execute_script("document.querySelector('[id=loginSubmit]').click()")
 	#time.sleep(5)
 	time.sleep(9)
-	otp = gmailotp.getFyersOTP(datetime.datetime.now())
+	kolkata_timezone = timezone('Asia/Kolkata')
+	otp = gmailotp.getFyersOTP(datetime.datetime.now(kolkata_timezone))
 	print(otp)
 	driver.find_element(By.ID,"otp-container").find_element(By.ID,"first").send_keys(otp[0])
 	driver.find_element(By.ID,"otp-container").find_element(By.ID,"second").send_keys(otp[1])
@@ -206,7 +210,9 @@ def getMonthlyExpiryDate():
 	# Get the last Thursday of the month
 	last_thursday = datetime.date(today.year, today.month, last_day_of_month) - datetime.timedelta(days=(last_day_of_month - calendar.weekday(today.year, today.month, last_day_of_month)) % 7)
 	return last_thursday.strftime("%y%b").upper()
+
 strike_priceoffset={"NIFTY":50,"FINNIFTY":50,"BANKNIFTY":100}
+
 def nearest_strike(strike_step,n):
     if n % strike_step == 0:
         return n
@@ -227,6 +233,31 @@ def get20StrikePrices(atm_strike,symbol):
     return strike_price_list
 #def getWeeklyExpirySymbols():
     #getweeklyexpirydates
+
+def getWeeklyOptionSymbols(symbol,symbolEQ,date):
+	#nse = nsetools.Nse()
+	#strike_prices = nse.get_active_monthly get_strike_prices(symbol)
+	status ,weekly_expiry = getNextWeeklyExpiryDate(symbol,date)
+	if status == 'ok':
+		#get median strike price 
+		filePath = 'data/'+date+'/'+symbolEQ+'_'+date+'_'+'1min.csv'
+		if os.path.exists(filePath):
+			df = pd.read_csv(filePath)
+			df.columns = ['timestamp', 'open', 'high','low','close','volume']
+			mean_price = df[['open', 'high', 'low', 'close']].mean(axis=1).mean()
+			print (mean_price)
+			atm_strike = nearest_strike(strike_priceoffset[symbol],mean_price)
+			print('atm_strike:=',atm_strike)
+			strikelist = get20StrikePrices(atm_strike,symbol)
+			#generate symbols for options
+			weekly_symbols =[]
+			for strike in strikelist:
+				optionssymbol_CE = "NSE:"+symbol+weekly_expiry.strftime('%y')+weekly_expiry.strftime('%b')[0]+weekly_expiry.strftime('%d')+str(strike)+'CE'
+				optionssymbol_PE = "NSE:"+symbol+weekly_expiry.strftime('%y')+weekly_expiry.strftime('%b')[0]+weekly_expiry.strftime('%d')+str(strike)+'PE'
+				weekly_symbols.append(optionssymbol_CE)
+				weekly_symbols.append(optionssymbol_PE)
+			print(weekly_symbols)
+			return weekly_symbols
     
 def getMonthlyOptionSymbols(symbol,symbolEQ,date):
 	#nse = nsetools.Nse()
@@ -255,10 +286,32 @@ def getMonthlyOptionSymbols(symbol,symbolEQ,date):
 		#strikes_below_mean = strike_prices.loc[strike_prices['strike_price'] < mean_price].head(10)
 		#print("strikes_above_mean -",strikes_above_mean)
 		#print("strikes_below_mean -",strikes_below_mean)
-def downloadEqFutOptions(fyers,symbol):
-	yesterday = datetime.datetime.now() #- datetime.timedelta(days=1)
+def getNextWeeklyExpiryDate(symbol,date):
+	today = datetime.datetime.now()
+	if symbol == 'NIFTY':
+		while True:
+			if today.weekday() ==	3:#thursday
+				return "ok",today
+			else:
+				today = today+ datetime.timedelta(days=1)
+	if symbol == 'BANKNIFTY':
+		while True:
+			if today.weekday() ==	2:#thursday
+				return "ok",today
+			else:
+				today = today+ datetime.timedelta(days=1)
+	if symbol == 'FINNIFTY':
+		while True:
+			if today.weekday() ==	1:#thursday
+				return "ok",today
+			else:
+				today = today+ datetime.timedelta(days=1)
+	return "error",today
+def downloadEqFutOptions(fyers,symbol,date_str):
+	#yesterday = datetime.datetime.now() #- datetime.timedelta(days=1)
 	#date = datetime.datetime.now().strftime("%Y-%m-%d")
-	date = yesterday.strftime("%Y-%m-%d")
+	#date = yesterday.strftime("%Y-%m-%d")
+	date =date_str
 	fyersSymbolEq = 'NSE:'+symbol+'-'+'EQ'
 	if '-INDEX' in fyersSymbolEq:
 		fyersSymbolEq = fyersSymbolEq.replace('-EQ','')
@@ -287,6 +340,11 @@ def downloadEqFutOptions(fyers,symbol):
 		monthly_symbols = getMonthlyOptionSymbols(symbol,fyersSymbolEq,date)
 		for monthly_symbol in monthly_symbols:
 			downloadData(fyers,monthly_symbol,date)
+   
+	if symbol == 'NIFTY' or symbol == 'BANKNIFTY' or symbol == 'FINNIFTY':
+		weekly_expiry_symbols = getWeeklyOptionSymbols(symbol,fyersSymbolEq,date)
+		for weeklysymbol in weekly_expiry_symbols:
+			downloadData(fyers,weeklysymbol,date)
     
 	pass
 def read_stocklist(filename):
@@ -315,15 +373,39 @@ def read_stocklist(filename):
 
 	# Print the set data
 	print(set_data)
+def ZipDataFolder(folder_path):
+	zip_filename = os.path.basename(folder_path) + ".zip"
+	with zipfile.ZipFile(zip_filename, "w",compression=zipfile.ZIP_LZMA) as zip:
+		for root, _, files in os.walk(folder_path):
+			for file in files:
+				file_path = os.path.join(root, file)
+				zip.write(file_path, arcname=os.path.relpath(file_path, folder_path))
+	return zip_filename
+	pass
+def UploadToGithub(zip_file):
+	repository = github.get_repo("nsedl")
+	with open(zip_filename, "rb") as zip_file:
+		repository.create_git_blob(zip_file.read(), "ZIP file")
+	pass
 def downloadAllData(fyers):
-    stockset = read_stocklist('stocklist.csv')
-    for symbol in stockset:
-        downloadEqFutOptions(fyers,symbol)
-    pass
+	stockset = read_stocklist('stocklist.csv')
+	today = datetime.datetime.now() - datetime.timedelta(days=1)
+	#date = datetime.datetime.now().strftime("%Y-%m-%d")
+	date_str = today.strftime("%Y-%m-%d")
+	for symbol in stockset:
+		downloadEqFutOptions(fyers,symbol,date_str)
+    
+	#zip the folder and upload to github
+	folder_to_zip = 'data/'+date_str
+	zip_file = ZipDataFolder(folder_to_zip)
+	UploadToGithub(zip_file)
+	pass
 def getTime():
 	return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def main():
 	global fyers
+	#weeklysymbols = getWeeklyOptionSymbols('NIFTY',"NSE:NIFTY50-INDEX",'2023-11-16')
+	#print(weeklysymbols)
 	#getOptionSymbols("NIFTY","NSE:NIFTY50-INDEX",'2023-11-15')
 	auth_code = generate_auth_code()
 	access_token = generate_access_token(auth_code, client_id, secret_key)
@@ -331,7 +413,7 @@ def main():
 	fyers.token = access_token
 
 	closingtime = int(23) * 60 + int(30)
-	orderplacetime = int(10) * 60 + int(36)
+	orderplacetime = int(9) * 60 + int(36)
 	timenow = (datetime.datetime.now().hour * 60 + datetime.datetime.now().minute)
 	print(f"Waiting for 10:00 AM , Time Now:{getTime()}")
 

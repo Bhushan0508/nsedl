@@ -32,8 +32,8 @@ import datetime
 import csv
 def getDateTime(input_string):
     #input_string = "Thu, 16 Nov 2023 19:12:51 +0530"
-    input_string = input_string.replace(' +0530','')
-    format_string = "%a, %d %b %Y %H:%M:%S"
+    #input_string = input_string.replace(' +0530','')
+    format_string = "%a, %d %b %Y %H:%M:%S %z"
 
     datetime_object = datetime.datetime.strptime(input_string, format_string)
     print(datetime_object)
@@ -54,8 +54,10 @@ def getFyersOTP(otpdate):
 
     # Getting all the unread messages from Inbox
     # labelIds can be changed accordingly
+    
     unread_msgs = GMAIL.users().messages().list(userId='me',labelIds=[label_id_one]).execute()
-
+    time.sleep(5)
+    unread_msgs = GMAIL.users().messages().list(userId='me',labelIds=[label_id_one]).execute()
     # We get a dictonary. Now reading values for the key 'messages'
     mssg_list = unread_msgs['messages']
 
@@ -89,11 +91,11 @@ def getFyersOTP(otpdate):
                             msg_date = two['value']
                             date_parse = (parser.parse(msg_date))
                             m_date = (date_parse.date())
-                            # if getDateTime(msg_date) < otpdate:
-                            #     print(f"OTP Mail date({m_date}) is earlier than the request date({otpdate})")
-                            #     print("Refreshing mail again")
-                            #     time.sleep(5)
-                            #     return getFyersOTP(datetime.datetime.now())
+                            if getDateTime(msg_date) < otpdate:
+                                print(f"OTP Mail date({m_date}) is earlier than the request date({otpdate})")
+                                print("Refreshing mail again")
+                                time.sleep(5)
+                                return getFyersOTP(otpdate)
                             temp_dict['Date'] = str(m_date)
                         else:
                             pass
