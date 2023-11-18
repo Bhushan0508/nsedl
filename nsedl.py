@@ -61,13 +61,15 @@ def generate_auth_code():
 	time.sleep(3)
 	driver.execute_script(f"document.querySelector('[id=fy_client_id]').value = '{username}'")
 	driver.execute_script("document.querySelector('[id=clientIdSubmit]').click()")
+	kolkata_timezone = timezone('Asia/Kolkata')
+	otp_request_date = datetime.datetime.now(kolkata_timezone)
 	#time.sleep(3)
 	#driver.execute_script(f"document.querySelector('[id=fy_client_pwd]').value = '{password}'")
 	#driver.execute_script("document.querySelector('[id=loginSubmit]').click()")
 	#time.sleep(5)
 	time.sleep(9)
-	kolkata_timezone = timezone('Asia/Kolkata')
-	otp = gmailotp.getFyersOTP(datetime.datetime.now(kolkata_timezone))
+	
+	otp = gmailotp.getFyersOTP(otp_request_date)
 	print(otp)
 	driver.find_element(By.ID,"otp-container").find_element(By.ID,"first").send_keys(otp[0])
 	driver.find_element(By.ID,"otp-container").find_element(By.ID,"second").send_keys(otp[1])
@@ -389,7 +391,7 @@ def UploadToGithub(zip_file):
 	pass
 def downloadAllData(fyers):
 	stockset = read_stocklist('stocklist.csv')
-	today = datetime.datetime.now() - datetime.timedelta(days=1)
+	today = datetime.datetime.now() - datetime.timedelta(days=2)
 	#date = datetime.datetime.now().strftime("%Y-%m-%d")
 	date_str = today.strftime("%Y-%m-%d")
 	for symbol in stockset:
@@ -398,7 +400,7 @@ def downloadAllData(fyers):
 	#zip the folder and upload to github
 	folder_to_zip = 'data/'+date_str
 	zip_file = ZipDataFolder(folder_to_zip)
-	UploadToGithub(zip_file)
+	#UploadToGithub(zip_file)
 	pass
 def getTime():
 	return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
