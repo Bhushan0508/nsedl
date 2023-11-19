@@ -405,7 +405,7 @@ def UploadToGithub(zip_file):
 	pass
 def downloadAllData(fyers):
 	stockset = read_stocklist('stocklist.csv')
-	today = datetime.datetime.now() - datetime.timedelta(days=11)
+	today = datetime.datetime.now() #- datetime.timedelta(days=11)
 	#date = datetime.datetime.now().strftime("%Y-%m-%d")
 	date_str = today.strftime("%Y-%m-%d")
 	for symbol in stockset:
