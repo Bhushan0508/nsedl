@@ -42,7 +42,8 @@ import calendar
 #import github
 import zipfile
 from pytz import timezone
-
+import subprocess
+import json 
 def generate_access_token(auth_code, appId, secret_key):
 	appSession = accessToken.SessionModel(client_id=appId, secret_key=secret_key,grant_type="authorization_code")
 	appSession.set_token(auth_code)
@@ -235,7 +236,20 @@ def get20StrikePrices(atm_strike,symbol):
     return strike_price_list
 #def getWeeklyExpirySymbols():
     #getweeklyexpirydates
-
+def getMonthCodeForWeeklyExpiries(month_str):
+    monthcode = {   'Jan':'1',
+					'Feb':'2',
+					'Mar':'3',
+					'Apr':'4',
+					'May':'5',
+					'Jun':'6',
+					'Jul':'7',
+					'Aug':'8',
+					'Sep':'9',
+					'Oct':'O',
+					'Nov':'N',
+					'Dec':'D'}
+    return monthcode[month_str]
 def getWeeklyOptionSymbols(symbol,symbolEQ,date):
 	#nse = nsetools.Nse()
 	#strike_prices = nse.get_active_monthly get_strike_prices(symbol)
@@ -254,8 +268,8 @@ def getWeeklyOptionSymbols(symbol,symbolEQ,date):
 			#generate symbols for options
 			weekly_symbols =[]
 			for strike in strikelist:
-				optionssymbol_CE = "NSE:"+symbol+weekly_expiry.strftime('%y')+weekly_expiry.strftime('%b')[0]+weekly_expiry.strftime('%d')+str(strike)+'CE'
-				optionssymbol_PE = "NSE:"+symbol+weekly_expiry.strftime('%y')+weekly_expiry.strftime('%b')[0]+weekly_expiry.strftime('%d')+str(strike)+'PE'
+				optionssymbol_CE = "NSE:"+symbol+weekly_expiry.strftime('%y')+getMonthCodeForWeeklyExpiries(weekly_expiry.strftime('%b'))+weekly_expiry.strftime('%d')+str(strike)+'CE'
+				optionssymbol_PE = "NSE:"+symbol+weekly_expiry.strftime('%y')+getMonthCodeForWeeklyExpiries(weekly_expiry.strftime('%b'))+weekly_expiry.strftime('%d')+str(strike)+'PE'
 				weekly_symbols.append(optionssymbol_CE)
 				weekly_symbols.append(optionssymbol_PE)
 			print(weekly_symbols)
@@ -385,13 +399,13 @@ def ZipDataFolder(folder_path):
 	return zip_filename
 	pass
 def UploadToGithub(zip_file):
-	repository = github.get_repo("nsedl")
-	with open(zip_filename, "rb") as zip_file:
-		repository.create_git_blob(zip_file.read(), "ZIP file")
+	result = subprocess.run(['git add '+ zip_file],shell=True, stdout=subprocess.PIPE, text=True)
+	result = subprocess.run(['git commit -m \''+ zip_file+'\''],shell=True, stdout=subprocess.PIPE, text=True)
+	result = subprocess.run(['git push'],shell=True, stdout=subprocess.PIPE, text=True)
 	pass
 def downloadAllData(fyers):
 	stockset = read_stocklist('stocklist.csv')
-	today = datetime.datetime.now() - datetime.timedelta(days=2)
+	today = datetime.datetime.now() - datetime.timedelta(days=11)
 	#date = datetime.datetime.now().strftime("%Y-%m-%d")
 	date_str = today.strftime("%Y-%m-%d")
 	for symbol in stockset:
@@ -400,20 +414,55 @@ def downloadAllData(fyers):
 	#zip the folder and upload to github
 	folder_to_zip = 'data/'+date_str
 	zip_file = ZipDataFolder(folder_to_zip)
-	#UploadToGithub(zip_file)
+	UploadToGithub(zip_file)
 	pass
 def getTime():
 	return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+def write_auth_data(auth_code,access_token):
+    data = {}
+    data['auth_code'] = auth_code
+    data['access_token'] = access_token
+    data['date'] = str(datetime.datetime.now())
+    with open('auth_data.json', 'w') as json_file:
+        json.dump(data, json_file, indent=2)
+    print('Auth data stored succesfully')
+    return data
+def validate_data(data):
+	generated_date_str = data['date']
+	generated_date = datetime.datetime.strptime(generated_date_str, '%Y-%m-%d %H:%M:%S.%f')
+	today = datetime.datetime.today()
+	if generated_date.year == today.year and generated_date.month == today.month and generated_date.day == today.day:
+		return True
+	return False
+def read_auth_data():
+	if os.path.exists('auth_data.json'):
+		with open(f'auth_data.json', 'r') as json_file:
+			data = json.load(json_file)
+			if validate_data(data) == True:
+				return data
+	return {}
 def main():
 	global fyers
+	#UploadToGithub('2023-11-09.zip')
 	#weeklysymbols = getWeeklyOptionSymbols('NIFTY',"NSE:NIFTY50-INDEX",'2023-11-16')
 	#print(weeklysymbols)
 	#getOptionSymbols("NIFTY","NSE:NIFTY50-INDEX",'2023-11-15')
-	auth_code = generate_auth_code()
-	access_token = generate_access_token(auth_code, client_id, secret_key)
+	auth_code =''
+	access_token=''
+	data = read_auth_data()
+	if len(data) ==0:
+		auth_code = generate_auth_code()
+		access_token = generate_access_token(auth_code, client_id, secret_key)
+		data = write_auth_data(auth_code,access_token)
+
+	if len(data) ==3:
+		auth_code = data['auth_code']
+		access_token = data['access_token']
+
 	fyers = fyersModel.FyersModel(token=access_token, log_path=log_path, client_id=client_id)
 	fyers.token = access_token
-
+	
+			
 	closingtime = int(23) * 60 + int(30)
 	orderplacetime = int(9) * 60 + int(36)
 	timenow = (datetime.datetime.now().hour * 60 + datetime.datetime.now().minute)

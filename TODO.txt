@@ -5,4 +5,4 @@ ToDO .txt
     2. upload the zips to github/ google drive 
 
 3. Share the files with the world
-4. 
+4. Get the Authcode once in a day, prevent getting auth code everytime
